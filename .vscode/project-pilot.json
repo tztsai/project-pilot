@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "projectName": "Project Pilot VSCode Extension",
+  "customFolders": {},
+  "preferences": {
+    "autoCreateLogs": true,
+    "taskAggregation": ["tasks.md", "STATUS.md", "CHANGELOG.md"]
+  }
+} 

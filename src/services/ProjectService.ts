@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { Project, ProjectConfig } from '../models/Project';
 import { FileService } from './FileService';
+import { MarkdownParser } from './MarkdownParser';
 
 export class ProjectService {
   private context: vscode.ExtensionContext;
@@ -27,15 +28,17 @@ export class ProjectService {
     }
 
     // Fallback: check for common files and folder structure
-    const statusPath = path.join(workspaceRoot, 'STATUS.md');
-    const tasksPath = path.join(workspaceRoot, 'tasks.md');
-    const logsDir = path.join(workspaceRoot, '5-logs');
+    const pmDir = path.join(workspaceRoot, '.pm');
+    const statusPath = path.join(workspaceRoot, '.pm', 'STATUS.md');
+    const tasksPath = path.join(workspaceRoot, '.pm', 'tasks.md');
+    const logsDir = path.join(workspaceRoot, '.pm', '5-logs');
     
+    const hasPmDir = await FileService.exists(pmDir);
     const hasStatusFile = await FileService.exists(statusPath);
     const hasTasksFile = await FileService.exists(tasksPath);
     const hasLogsDir = await FileService.exists(logsDir);
 
-    return hasStatusFile || hasTasksFile || hasLogsDir;
+    return hasPmDir || hasStatusFile || hasTasksFile || hasLogsDir;
   }
 
   async refreshProject(): Promise<void> {
@@ -68,7 +71,57 @@ export class ProjectService {
       await this.saveProjectConfig(rootPath, config);
     }
 
-    return new Project(rootPath, config);
+    const project = new Project(rootPath, config);
+    
+    // Load tasks and logs
+    await this.loadProjectData(project);
+    
+    return project;
+  }
+
+  private async loadProjectData(project: Project): Promise<void> {
+    try {
+      // Load tasks from configured files
+      const tasks = await this.loadProjectTasks(project);
+      project.tasks = tasks;
+
+      // Load logs from logs directory
+      const logs = await this.loadProjectLogs(project);
+      project.logs = logs;
+    } catch (error) {
+      console.error('Failed to load project data:', error);
+    }
+  }
+
+  private async loadProjectTasks(project: Project): Promise<any[]> {
+    const taskFiles: string[] = [];
+    
+    // Get configured task aggregation files
+    for (const fileName of project.config.preferences.taskAggregation) {
+      const filePath = path.join(project.rootPath, '.pm', fileName);
+      if (await FileService.exists(filePath)) {
+        taskFiles.push(filePath);
+      }
+    }
+
+    // Also scan for all markdown files in the project structure
+    const pmDir = path.join(project.rootPath, '.pm');
+    if (await FileService.exists(pmDir)) {
+      const allMdFiles = await FileService.findFiles(pmDir, ['**/*.md']);
+      taskFiles.push(...allMdFiles);
+    }
+
+    // Remove duplicates
+    const uniqueTaskFiles = [...new Set(taskFiles)];
+    
+    // Aggregate tasks from all files
+    return await MarkdownParser.aggregateTasksFromProject(project.rootPath, uniqueTaskFiles);
+  }
+
+  private async loadProjectLogs(project: Project): Promise<any[]> {
+    // TODO: Implement log loading from 5-logs directory
+    // For now, return empty array - this will be implemented in Phase 4
+    return [];
   }
 
   private async saveProjectConfig(rootPath: string, config: ProjectConfig): Promise<void> {
@@ -129,16 +182,20 @@ export class ProjectService {
     await this.refreshProject();
 
     // Open STATUS.md
-    const statusPath = path.join(targetPath, 'STATUS.md');
+    const statusPath = path.join(targetPath, '.pm', 'STATUS.md');
     await FileService.openFileInEditor(statusPath);
 
     vscode.window.showInformationMessage(`Project Pilot project "${projectName}" initialized successfully!`);
   }
 
   private async createProjectStructure(rootPath: string): Promise<void> {
+    // Create .pm directory
+    const pmDir = path.join(rootPath, '.pm');
+    await FileService.ensureDirectoryExists(pmDir);
+
     // Create directories
     for (const folder of Project.DEFAULT_FOLDERS) {
-      const folderPath = path.join(rootPath, folder);
+      const folderPath = path.join(pmDir, folder);
       await FileService.ensureDirectoryExists(folderPath);
       
       // Create README.md in each folder
@@ -153,6 +210,8 @@ export class ProjectService {
   }
 
   private async createDefaultFiles(rootPath: string, projectName: string): Promise<void> {
+    const pmDir = path.join(rootPath, '.pm');
+
     // STATUS.md
     const statusContent = `# ${projectName} Status
 
@@ -170,7 +229,7 @@ export class ProjectService {
 ## Next Steps
 - 
 `;
-    await FileService.writeFile(path.join(rootPath, 'STATUS.md'), statusContent);
+    await FileService.writeFile(path.join(pmDir, 'STATUS.md'), statusContent);
 
     // tasks.md
     const tasksContent = `# Tasks
@@ -184,7 +243,7 @@ export class ProjectService {
 ## Done
 - [x] Project structure initialized
 `;
-    await FileService.writeFile(path.join(rootPath, 'tasks.md'), tasksContent);
+    await FileService.writeFile(path.join(pmDir, 'tasks.md'), tasksContent);
 
     // timeline.md
     const timelineContent = `# Timeline
@@ -196,7 +255,7 @@ export class ProjectService {
 ## Timeline
 - ${new Date().toISOString().split('T')[0]}: Project initialized
 `;
-    await FileService.writeFile(path.join(rootPath, 'timeline.md'), timelineContent);
+    await FileService.writeFile(path.join(pmDir, 'timeline.md'), timelineContent);
   }
 
   dispose(): void {

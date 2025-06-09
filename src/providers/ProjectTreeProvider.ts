@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { Project } from '../models/Project';
+import { FileService } from '../services/FileService';
 
 export class ProjectItem extends vscode.TreeItem {
   constructor(
@@ -88,7 +89,7 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectItem>
     }
 
     if (element.filePath && element.itemType === 'folder') {
-      return Promise.resolve(this.getFolderContents(element.filePath));
+      return this.getFolderContents(element.filePath);
     }
 
     return Promise.resolve([]);
@@ -128,11 +129,60 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectItem>
     return items;
   }
 
-  private getFolderContents(folderPath: string): ProjectItem[] {
-    // TODO: Implement folder content reading
-    // This would scan the folder and return child items
-    // For now, return empty array
-    return [];
+  private async getFolderContents(folderPath: string): Promise<ProjectItem[]> {
+    try {
+      const items: ProjectItem[] = [];
+      
+      // Check if folder exists
+      if (!await FileService.exists(folderPath)) {
+        return items;
+      }
+
+      // Get all files and directories
+      const [files, directories] = await Promise.all([
+        FileService.listFiles(folderPath),
+        FileService.listDirectories(folderPath)
+      ]);
+
+      // Add directories first
+      for (const dirPath of directories) {
+        const dirName = path.basename(dirPath);
+        items.push(new ProjectItem(
+          dirName,
+          vscode.TreeItemCollapsibleState.Collapsed,
+          dirPath,
+          'folder'
+        ));
+      }
+
+      // Add files
+      for (const filePath of files) {
+        const fileName = path.basename(filePath);
+        const taskCount = fileName.endsWith('.md') ? this.getTaskCountForFile(filePath) : undefined;
+        items.push(new ProjectItem(
+          fileName,
+          vscode.TreeItemCollapsibleState.None,
+          filePath,
+          'file',
+          taskCount
+        ));
+      }
+
+      return items.sort((a, b) => {
+        // Folders first, then files, then alphabetical
+        if (a.itemType === 'folder' && b.itemType === 'file') {
+          return -1;
+        }
+        if (a.itemType === 'file' && b.itemType === 'folder') {
+          return 1;
+        }
+        return a.label.localeCompare(b.label);
+      });
+
+    } catch (error) {
+      console.error(`Failed to read folder contents: ${error}`);
+      return [];
+    }
   }
 
   private getTaskCountForFile(filePath: string): number {

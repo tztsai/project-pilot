@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { Task } from '../models/Task';
 import { Project } from '../models/Project';
+import { MarkdownParser } from '../services/MarkdownParser';
+import { FileService } from '../services/FileService';
 
 export interface TaskQuickPickItem extends vscode.QuickPickItem {
   task: Task;
@@ -134,10 +137,19 @@ export class TaskProvider {
       targetFile = fileChoice.file;
     }
 
+    // Choose section (if applicable)
+    const section = await this.chooseSection(targetFile);
+
     try {
       // Create task and add to file
-      await this.addTaskToFile(targetFile, taskText);
+      await this.addTaskToFile(targetFile, taskText, section);
       vscode.window.showInformationMessage(`Task added to ${targetFile}`);
+      
+      // Refresh project to show new task
+      if (this.project) {
+        // Trigger project refresh to reload tasks
+        vscode.commands.executeCommand('projectpilot.refresh');
+      }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to add task: ${error}`);
     }
@@ -157,6 +169,43 @@ export class TaskProvider {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to toggle task: ${error}`);
+    }
+  }
+
+  private async chooseSection(fileName: string): Promise<string | undefined> {
+    if (!this.project) {
+      return undefined;
+    }
+
+    try {
+      const filePath = path.join(this.project.rootPath, '.pm', fileName);
+      
+      if (!await FileService.exists(filePath)) {
+        return undefined;
+      }
+
+      const content = await FileService.readFile(filePath);
+      const sections = MarkdownParser.extractSections(content);
+      const sectionNames = Object.keys(sections);
+
+      if (sectionNames.length === 0) {
+        return undefined;
+      }
+
+      const sectionChoice = await vscode.window.showQuickPick([
+        { label: '(End of file)', section: undefined },
+        ...sectionNames.map(name => ({ 
+          label: `## ${name.charAt(0).toUpperCase() + name.slice(1)}`, 
+          section: name 
+        }))
+      ], {
+        placeHolder: 'Select section to add task to'
+      });
+
+      return sectionChoice?.section;
+    } catch (error) {
+      console.error('Failed to get sections:', error);
+      return undefined;
     }
   }
 
@@ -198,9 +247,17 @@ export class TaskProvider {
   }
 
   private async toggleTaskCompletion(task: Task): Promise<void> {
-    // TODO: Implement task toggling in file
-    // This would modify the markdown file to change [ ] to [x] or vice versa
-    console.log(`Toggle task: ${task.text} from ${task.completed} to ${!task.completed}`);
+    try {
+      await MarkdownParser.updateTaskInFile(task, !task.completed);
+      vscode.window.showInformationMessage(
+        `Task ${task.completed ? 'unmarked' : 'marked'} as ${task.completed ? 'incomplete' : 'complete'}`
+      );
+      
+      // Refresh project to show updated task
+      vscode.commands.executeCommand('projectpilot.refresh');
+    } catch (error) {
+      throw new Error(`Failed to toggle task completion: ${error}`);
+    }
   }
 
   private async goToTask(task: Task): Promise<void> {
@@ -225,14 +282,46 @@ export class TaskProvider {
     });
 
     if (newText && newText !== task.text) {
-      // TODO: Implement task text editing in file
-      console.log(`Edit task from "${task.text}" to "${newText}"`);
+      try {
+        // Read the file and update the specific line
+        const content = await FileService.readFile(task.file);
+        const lines = content.split('\n');
+        
+        if (task.line <= lines.length) {
+          const oldLine = lines[task.line - 1];
+          const checkboxRegex = /^(\s*-\s+\[[ x]\]\s+)(.*)$/;
+          const match = oldLine.match(checkboxRegex);
+          
+          if (match) {
+            const [, prefix] = match;
+            lines[task.line - 1] = `${prefix}${newText}`;
+            
+            const updatedContent = lines.join('\n');
+            await FileService.writeFile(task.file, updatedContent);
+            
+            vscode.window.showInformationMessage(`Task updated successfully`);
+            
+            // Refresh project to show updated task
+            vscode.commands.executeCommand('projectpilot.refresh');
+          }
+        }
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to edit task: ${error}`);
+      }
     }
   }
 
-  private async addTaskToFile(fileName: string, taskText: string): Promise<void> {
-    // TODO: Implement adding task to markdown file
-    // This would find the appropriate section and add - [ ] taskText
-    console.log(`Add task "${taskText}" to ${fileName}`);
+  private async addTaskToFile(fileName: string, taskText: string, section?: string): Promise<void> {
+    if (!this.project) {
+      throw new Error('No project available');
+    }
+
+    const filePath = path.join(this.project.rootPath, '.pm', fileName);
+    
+    try {
+      await MarkdownParser.addTaskToFile(filePath, taskText, section);
+    } catch (error) {
+      throw new Error(`Failed to add task to file: ${error}`);
+    }
   }
 } 

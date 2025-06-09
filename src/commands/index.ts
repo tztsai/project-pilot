@@ -16,6 +16,15 @@ export function registerCommands(
     }
   });
 
+  // Refresh Project command (internal)
+  const refreshCommand = vscode.commands.registerCommand('projectpilot.refresh', async () => {
+    try {
+      await projectService.refreshProject();
+    } catch (error) {
+      console.error('Failed to refresh project:', error);
+    }
+  });
+
   // Open Dashboard command
   const openDashboardCommand = vscode.commands.registerCommand('projectpilot.openDashboard', async () => {
     try {
@@ -87,6 +96,7 @@ export function registerCommands(
   // Register all commands with context
   context.subscriptions.push(
     initializeCommand,
+    refreshCommand,
     openDashboardCommand,
     newDailyLogCommand,
     addTaskCommand,
