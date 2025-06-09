@@ -4,19 +4,32 @@ import * as vscode from 'vscode';
 import { ProjectService } from './services/ProjectService';
 import { registerCommands } from './commands';
 import { Project } from './models/Project';
+import { ProjectTreeProvider } from './providers/ProjectTreeProvider';
+import { TaskProvider } from './providers/TaskProvider';
 
 let projectService: ProjectService;
+let projectTreeProvider: ProjectTreeProvider;
+let taskProvider: TaskProvider;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Project Pilot extension is being activated');
 
-	// Initialize project service
+	// Initialize services and providers
 	projectService = new ProjectService(context);
+	projectTreeProvider = new ProjectTreeProvider();
+	taskProvider = new TaskProvider();
 
-	// Register all commands
-	registerCommands(context, projectService);
+	// Register tree view
+	vscode.window.createTreeView('projectPilotExplorer', {
+		treeDataProvider: projectTreeProvider,
+		showCollapseAll: true,
+		canSelectMany: false
+	});
+
+	// Register all commands with providers
+	registerCommands(context, projectService, taskProvider);
 
 	// Set up workspace detection
 	setupWorkspaceDetection();
@@ -41,6 +54,12 @@ function setupWorkspaceDetection() {
 	watcher.onDidCreate(() => checkAndSetProjectContext());
 	watcher.onDidChange(() => checkAndSetProjectContext());
 	watcher.onDidDelete(() => checkAndSetProjectContext());
+
+	// Watch for markdown file changes to refresh task data
+	const mdWatcher = vscode.workspace.createFileSystemWatcher('**/*.md');
+	mdWatcher.onDidChange(() => refreshProjectData());
+	mdWatcher.onDidCreate(() => refreshProjectData());
+	mdWatcher.onDidDelete(() => refreshProjectData());
 }
 
 async function checkAndSetProjectContext() {
@@ -50,7 +69,24 @@ async function checkAndSetProjectContext() {
 	if (isProjectPilotProject) {
 		console.log('Project Pilot project detected');
 		// Refresh project data
+		await refreshProjectData();
+	} else {
+		// Clear providers when no project detected
+		projectTreeProvider.setProject(null);
+		taskProvider.setProject(null);
+	}
+}
+
+async function refreshProjectData() {
+	try {
 		await projectService.refreshProject();
+		const currentProject = await projectService.getCurrentProject();
+		
+		// Update providers with current project
+		projectTreeProvider.setProject(currentProject);
+		taskProvider.setProject(currentProject);
+	} catch (error) {
+		console.error('Error refreshing project data:', error);
 	}
 }
 

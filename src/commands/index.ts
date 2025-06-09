@@ -1,7 +1,12 @@
 import * as vscode from 'vscode';
 import { ProjectService } from '../services/ProjectService';
+import { TaskProvider } from '../providers/TaskProvider';
 
-export function registerCommands(context: vscode.ExtensionContext, projectService: ProjectService): void {
+export function registerCommands(
+  context: vscode.ExtensionContext, 
+  projectService: ProjectService,
+  taskProvider: TaskProvider
+): void {
   // Initialize Project command
   const initializeCommand = vscode.commands.registerCommand('projectpilot.initialize', async () => {
     try {
@@ -46,14 +51,7 @@ export function registerCommands(context: vscode.ExtensionContext, projectServic
   // Add Task command
   const addTaskCommand = vscode.commands.registerCommand('projectpilot.addTask', async () => {
     try {
-      const project = projectService.getCurrentProject();
-      if (!project) {
-        vscode.window.showWarningMessage('No Project Pilot project found in workspace. Initialize a project first.');
-        return;
-      }
-      
-      // TODO: Implement add task functionality
-      vscode.window.showInformationMessage('Add task feature coming soon!');
+      await taskProvider.addTask();
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to add task: ${error}`);
     }
@@ -62,14 +60,7 @@ export function registerCommands(context: vscode.ExtensionContext, projectServic
   // Toggle Task command
   const toggleTaskCommand = vscode.commands.registerCommand('projectpilot.toggleTask', async () => {
     try {
-      const project = projectService.getCurrentProject();
-      if (!project) {
-        vscode.window.showWarningMessage('No Project Pilot project found in workspace. Initialize a project first.');
-        return;
-      }
-      
-      // TODO: Implement toggle task functionality
-      vscode.window.showInformationMessage('Toggle task feature coming soon!');
+      await taskProvider.toggleTask();
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to toggle task: ${error}`);
     }
@@ -78,14 +69,7 @@ export function registerCommands(context: vscode.ExtensionContext, projectServic
   // Show All Tasks command
   const showTasksCommand = vscode.commands.registerCommand('projectpilot.showTasks', async () => {
     try {
-      const project = projectService.getCurrentProject();
-      if (!project) {
-        vscode.window.showWarningMessage('No Project Pilot project found in workspace. Initialize a project first.');
-        return;
-      }
-      
-      // TODO: Implement show tasks functionality
-      vscode.window.showInformationMessage('Show tasks feature coming soon!');
+      await taskProvider.showAllTasks();
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to show tasks: ${error}`);
     }
@@ -94,14 +78,7 @@ export function registerCommands(context: vscode.ExtensionContext, projectServic
   // Show Tasks by Folder command
   const showTasksByFolderCommand = vscode.commands.registerCommand('projectpilot.showTasksByFolder', async () => {
     try {
-      const project = projectService.getCurrentProject();
-      if (!project) {
-        vscode.window.showWarningMessage('No Project Pilot project found in workspace. Initialize a project first.');
-        return;
-      }
-      
-      // TODO: Implement show tasks by folder functionality
-      vscode.window.showInformationMessage('Show tasks by folder feature coming soon!');
+      await taskProvider.showTasksByFolder();
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to show tasks by folder: ${error}`);
     }
